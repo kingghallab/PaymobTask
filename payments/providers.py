@@ -26,10 +26,10 @@ class PaymentProvider(ABC):
 
 class FakePaymentProvider(PaymentProvider):
     name = 'fake'
+    force_success = True  # Deterministic success for tests and dev
 
     def capture(self, amount_cents: int, token: str, idempotency_key: str) -> PaymentResult:
-        # 90% success rate for development simulation
-        if random.random() < 0.9:
+        if self.force_success or random.random() < 0.9:
             return PaymentResult(success=True, payment_id=f"fake_pay_{uuid.uuid4().hex[:12]}")
         return PaymentResult(success=False, error="Simulated payment decline")
 
