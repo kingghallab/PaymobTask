@@ -1,4 +1,5 @@
 import os
+import socket
 from datetime import timedelta
 from pathlib import Path
 from decouple import config
@@ -64,6 +65,24 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
+# Host Resolution Fallback for Docker vs Local Execution
+db_host_env = config('DB_HOST', default='db')
+db_port_env = config('DB_PORT', default='5432')
+redis_url_env = config('REDIS_URL', default='redis://redis:6379/0')
+celery_broker_url_env = config('CELERY_BROKER_URL', default='redis://redis:6379/0')
+
+try:
+    socket.gethostbyname(db_host_env)
+except socket.gaierror:
+    db_host_env = 'localhost'
+    db_port_env = '5433'  # Local host port mapping when Docker DB runs alongside local Postgres
+
+try:
+    socket.gethostbyname('redis')
+except socket.gaierror:
+    redis_url_env = 'redis://localhost:6379/0'
+    celery_broker_url_env = 'redis://localhost:6379/0'
+
 # Database Configuration
 DATABASES = {
     'default': {
@@ -71,8 +90,8 @@ DATABASES = {
         'NAME': config('DB_NAME', default='paymob_ticketing'),
         'USER': config('DB_USER', default='paymob'),
         'PASSWORD': config('DB_PASSWORD', default='devpassword'),
-        'HOST': config('DB_HOST', default='db'),
-        'PORT': config('DB_PORT', default='5432'),
+        'HOST': db_host_env,
+        'PORT': db_port_env,
     }
 }
 
@@ -125,7 +144,7 @@ SIMPLE_JWT = {
 }
 
 # Cache Configuration (Redis)
-REDIS_URL = config('REDIS_URL', default='redis://redis:6379/0')
+REDIS_URL = redis_url_env
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
@@ -137,7 +156,7 @@ CACHES = {
 }
 
 # Celery Configuration
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://redis:6379/0')
+CELERY_BROKER_URL = celery_broker_url_env
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
@@ -158,8 +177,6 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=2, minute=0),
     },
 }
-
-
 
 # Payment Provider Setting
 PAYMENT_PROVIDER_CLASS = config('PAYMENT_PROVIDER_CLASS', default='payments.providers.FakePaymentProvider')
