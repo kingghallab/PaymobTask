@@ -6,4 +6,5 @@ urlpatterns = [
     path('api/users/', include('users.urls')),
     path('api/', include('events.urls')),
     path('api/', include('orders.urls')),
+    path('api/', include('core.urls')),
 ]

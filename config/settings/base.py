@@ -146,12 +146,19 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
+from celery.schedules import crontab
+
 CELERY_BEAT_SCHEDULE = {
     'sweep-expired-reservations': {
         'task': 'orders.tasks.sweep_expired_reservations',
         'schedule': 60.0,
     },
+    'daily-reconciliation': {
+        'task': 'core.tasks.run_reconciliation_task',
+        'schedule': crontab(hour=2, minute=0),
+    },
 }
+
 
 
 # Payment Provider Setting
