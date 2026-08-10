@@ -71,12 +71,10 @@ services:
       redis:
         condition: service_healthy
 
-  cloudbeaver:
-    image: dbeaver/cloudbeaver:latest
+  adminer:
+    image: adminer:latest
     ports:
-      - "8978:8978"
-    volumes:
-      - cloudbeaverdata:/opt/cloudbeaver/workspace
+      - "8085:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -84,4 +82,3 @@ services:
 volumes:
   pgdata:
   redisdata:
-  cloudbeaverdata:
