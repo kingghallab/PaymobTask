@@ -1,6 +1,6 @@
 from rest_framework import serializers
-from orders.models import Reservation, ReservationStatus
-from events.serializers import TicketTypeSerializer
+from orders.models import Reservation, Order, Ticket
+from events.serializers import TicketTypeSerializer, EventSerializer
 
 
 class ReservationSerializer(serializers.ModelSerializer):
@@ -18,3 +18,30 @@ class ReservationSerializer(serializers.ModelSerializer):
 class ReservationCreateSerializer(serializers.Serializer):
     ticket_type_id = serializers.UUIDField()
     quantity = serializers.IntegerField(min_value=1)
+
+
+class TicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ticket
+        fields = ('id', 'order', 'status', 'created_at')
+        read_only_fields = ('id', 'order', 'created_at')
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    tickets = TicketSerializer(many=True, read_only=True)
+    ticket_type_detail = TicketTypeSerializer(source='ticket_type', read_only=True)
+    event_detail = EventSerializer(source='event', read_only=True)
+
+    class Meta:
+        model = Order
+        fields = (
+            'id', 'user', 'event', 'event_detail', 'reservation',
+            'ticket_type', 'ticket_type_detail', 'idempotency_key',
+            'quantity', 'unit_price_cents', 'total_cents', 'status',
+            'payment_id', 'payment_provider', 'tickets', 'confirmed_at', 'created_at'
+        )
+        read_only_fields = ('id', 'user', 'created_at')
+
+
+class PurchaseRequestSerializer(serializers.Serializer):
+    reservation_id = serializers.UUIDField()

@@ -16,3 +16,18 @@ class ReservationExpiredError(Exception):
 class ReservationAccessDeniedError(Exception):
     """Raised when a user tries to access/cancel a reservation owned by another user."""
     pass
+
+
+class PaymentFailedError(Exception):
+    """Raised when payment gateway declines or fails to capture funds."""
+    pass
+
+
+class InvalidRefundError(Exception):
+    """Raised when refund request is invalid."""
+    pass
+
+
+class PaymentRefundFailedError(Exception):
+    """Raised when refund gateway call fails."""
+    pass

@@ -5,6 +5,7 @@ from django.db.models import F
 from django.utils.timezone import now
 from core.models import AuditLog
 from orders.models import Reservation, ReservationStatus
+from orders.services.purchase_service import process_purchase
 
 logger = logging.getLogger(__name__)
 
@@ -52,3 +53,23 @@ def sweep_expired_reservations():
         logger.info(f"Swept and expired {expired_count} stale reservations.")
 
     return expired_count
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+def process_purchase_task(self, reservation_id: str, idempotency_key: str, actor_email: str):
+    """
+    Background Celery worker task for executing asynchronous ticket purchases.
+    Retries up to 3 times with 5s delay on transient failures.
+    """
+    try:
+        order = process_purchase(
+            reservation_id=reservation_id,
+            idempotency_key=idempotency_key,
+            actor_email=actor_email
+        )
+        logger.info(f"Successfully processed purchase task for Order {order.id}")
+        return str(order.id)
+    except Exception as exc:
+        logger.warning(f"Error processing purchase task for reservation {reservation_id}: {exc}")
+        # Re-raise to trigger retry until max_retries, then signal fires FailedTask DLQ
+        raise self.retry(exc=exc)
