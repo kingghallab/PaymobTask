@@ -1,0 +1,13 @@
+{
+  "name": "ticketing-backend-stack",
+  "profile": "production-django",
+  "targets": ["django", "postgres", "celery"],
+  "skillIds": [
+    "django-pro",
+    "postgres-best-practices",
+    "django-perf-review",
+    "api-security-best-practices",
+    "007",
+    "plan-writing"
+  ]
+}
