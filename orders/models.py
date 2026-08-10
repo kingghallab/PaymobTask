@@ -25,6 +25,12 @@ class TicketStatus(models.TextChoices):
     CANCELLED = 'cancelled', 'Cancelled'
 
 
+class RefundStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    PROCESSED = 'processed', 'Processed'
+    FAILED = 'failed', 'Failed'
+
+
 class Reservation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -132,3 +138,43 @@ class Ticket(models.Model):
 
     def __str__(self):
         return f"Ticket {self.id} ({self.status})"
+
+
+class Refund(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='refunds'
+    )
+    ticket = models.ForeignKey(
+        Ticket,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='refunds',
+        help_text="Nullable - links to single ticket for partial refund"
+    )
+    amount_cents = models.PositiveIntegerField()
+    reason = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=RefundStatus.choices,
+        default=RefundStatus.PROCESSED
+    )
+    initiated_by = models.CharField(max_length=255)
+    payment_refund_id = models.CharField(max_length=255, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(amount_cents__gt=0),
+                name='chk_refund_positive'
+            )
+        ]
+
+    def __str__(self):
+        return f"Refund {self.id} for Order {self.order_id} (${self.amount_cents / 100:.2f})"

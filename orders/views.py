@@ -3,10 +3,16 @@ from rest_framework.response import Response
 from orders.models import Order
 from orders.serializers import (
     ReservationSerializer, ReservationCreateSerializer,
-    PurchaseRequestSerializer, OrderSerializer
+    PurchaseRequestSerializer, OrderSerializer,
+    RefundRequestSerializer, RefundSerializer
 )
 from orders.services.reservation_service import create_reservation, cancel_reservation
-from orders.exceptions import InsufficientCapacityError, ReservationAccessDeniedError
+from orders.services.purchase_service import process_purchase
+from orders.services.refund_service import issue_refund
+from orders.exceptions import (
+    InsufficientCapacityError, ReservationAccessDeniedError,
+    InvalidRefundError, PaymentRefundFailedError
+)
 from orders.tasks import process_purchase_task
 
 
@@ -58,7 +64,6 @@ class PurchaseView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Fast Idempotency Dedup Check via unique Order.idempotency_key
         existing_order = Order.objects.filter(idempotency_key=idem_key).first()
         if existing_order:
             return Response(OrderSerializer(existing_order).data, status=status.HTTP_200_OK)
@@ -68,7 +73,6 @@ class PurchaseView(views.APIView):
 
         reservation_id = serializer.validated_data['reservation_id']
 
-        # Enqueue background Celery task
         process_purchase_task.delay(
             reservation_id=str(reservation_id),
             idempotency_key=idem_key,
@@ -93,3 +97,23 @@ class OrderDetailView(views.APIView):
         if not order:
             return Response({'error': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(OrderSerializer(order).data, status=status.HTTP_200_OK)
+
+
+class RefundView(views.APIView):
+    throttle_scope = 'refund'
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = RefundRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            refund = issue_refund(
+                order_id=serializer.validated_data['order_id'],
+                ticket_ids=serializer.validated_data.get('ticket_ids'),
+                reason=serializer.validated_data.get('reason', ''),
+                actor_email=request.user.email
+            )
+            return Response(RefundSerializer(refund).data, status=status.HTTP_201_CREATED)
+        except (InvalidRefundError, PaymentRefundFailedError) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

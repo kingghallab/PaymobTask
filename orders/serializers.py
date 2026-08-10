@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from orders.models import Reservation, Order, Ticket
+from orders.models import Reservation, Order, Ticket, Refund
 from events.serializers import TicketTypeSerializer, EventSerializer
 
 
@@ -45,3 +45,24 @@ class OrderSerializer(serializers.ModelSerializer):
 
 class PurchaseRequestSerializer(serializers.Serializer):
     reservation_id = serializers.UUIDField()
+
+
+class RefundSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Refund
+        fields = (
+            'id', 'order', 'ticket', 'amount_cents', 'reason',
+            'status', 'initiated_by', 'payment_refund_id', 'processed_at', 'created_at'
+        )
+        read_only_fields = ('id', 'status', 'payment_refund_id', 'processed_at', 'created_at')
+
+
+class RefundRequestSerializer(serializers.Serializer):
+    order_id = serializers.UUIDField()
+    ticket_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        default=None,
+        help_text="Optional list of ticket IDs for partial refund. Omit for full order refund."
+    )
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
