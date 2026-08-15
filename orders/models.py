@@ -92,6 +92,8 @@ class Order(models.Model):
     quantity = models.PositiveIntegerField()
     unit_price_cents = models.PositiveIntegerField()
     total_cents = models.PositiveIntegerField()
+    total_fees_cents = models.PositiveIntegerField(default=0)
+    total_tax_cents = models.PositiveIntegerField(default=0)
     status = models.CharField(
         max_length=20,
         choices=OrderStatus.choices,
@@ -131,6 +133,7 @@ class Ticket(models.Model):
         choices=TicketStatus.choices,
         default=TicketStatus.ACTIVE
     )
+    checked_in_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

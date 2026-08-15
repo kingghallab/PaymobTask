@@ -6,6 +6,7 @@ from django.utils.timezone import now
 from core.models import AuditLog
 from orders.models import Reservation, ReservationStatus
 from orders.services.purchase_service import process_purchase
+from orders.exceptions import ReservationNotActiveError, ReservationExpiredError, PaymentFailedError, SalesPausedError
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,13 @@ def process_purchase_task(self, reservation_id: str, idempotency_key: str, actor
     """
     Background Celery worker task for executing asynchronous ticket purchases.
     Retries up to 3 times with 5s delay on transient failures.
+
+    Domain outcomes (reservation already gone, expired, or a declined
+    payment) are expected results, not infrastructure failures - they mark
+    the purchase as not completed and return without retrying or landing in
+    the FailedTask DLQ, per the brief's "DLQ captures permanently failed
+    attempts" AC. Only genuine transient errors (DB deadlock, timeout, etc.)
+    retry and eventually reach the DLQ.
     """
     try:
         order = process_purchase(
@@ -69,6 +77,9 @@ def process_purchase_task(self, reservation_id: str, idempotency_key: str, actor
         )
         logger.info(f"Successfully processed purchase task for Order {order.id}")
         return str(order.id)
+    except (ReservationNotActiveError, ReservationExpiredError, PaymentFailedError, SalesPausedError) as exc:
+        logger.info(f"Purchase for reservation {reservation_id} did not complete: {exc}")
+        return None
     except Exception as exc:
         logger.warning(f"Error processing purchase task for reservation {reservation_id}: {exc}")
         # Re-raise to trigger retry until max_retries, then signal fires FailedTask DLQ

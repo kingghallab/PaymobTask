@@ -2,7 +2,8 @@ import logging
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from events.models import TicketType
-from orders.models import Ticket, TicketStatus, Reservation, ReservationStatus
+from core.reconciliation import compute_actual_counts
+from core.alerting import send_alert
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +24,29 @@ class Command(BaseCommand):
             ticket_types = ticket_types.filter(event_id=event_id)
 
         drift_found = 0
+        oversell_found = 0
 
         self.stdout.write(self.style.SUCCESS("Starting inventory reconciliation audit..."))
 
         for tt in ticket_types:
-            actual_sold = Ticket.objects.filter(order__ticket_type=tt, status=TicketStatus.ACTIVE).count()
-            actual_held = Reservation.objects.filter(ticket_type=tt, status=ReservationStatus.ACTIVE).count()
+            actual_sold, actual_held = compute_actual_counts(tt)
+
+            if actual_sold + actual_held > tt.total_capacity:
+                oversell_found += 1
+                overage = actual_sold + actual_held - tt.total_capacity
+                oversell_msg = (
+                    f"OVERSELL DETECTED for TicketType '{tt.name}' ({tt.id}) in event "
+                    f"'{tt.event.title}': actual_sold={actual_sold} + actual_held={actual_held} "
+                    f"exceeds total_capacity={tt.total_capacity} by {overage}."
+                )
+                self.stdout.write(self.style.ERROR(oversell_msg))
+                logger.error(oversell_msg)
+                send_alert(
+                    subject=f"Oversell detected: {tt.event.title} / {tt.name}",
+                    message=oversell_msg + " Immediate steps: pause sales for this event, "
+                            "run 'python manage.py run_reconciliation --fix', identify the "
+                            "offending orders, and follow refund/compensation policy.",
+                )
 
             drift_sold = actual_sold - tt.sold
             drift_held = actual_held - tt.held
@@ -47,6 +65,9 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(f"Auto-corrected counters for TicketType '{tt.name}'"))
             else:
                 self.stdout.write(f"OK: TicketType '{tt.name}' ({tt.id}) sold={tt.sold}, held={tt.held}")
+
+        if oversell_found > 0:
+            self.stdout.write(self.style.ERROR(f"{oversell_found} oversell incident(s) detected - alert sent."))
 
         if drift_found == 0:
             self.stdout.write(self.style.SUCCESS("Reconciliation completed cleanly. Zero drift detected!"))

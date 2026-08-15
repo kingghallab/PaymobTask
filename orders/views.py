@@ -11,7 +11,7 @@ from orders.services.purchase_service import process_purchase
 from orders.services.refund_service import issue_refund
 from orders.exceptions import (
     InsufficientCapacityError, ReservationAccessDeniedError,
-    InvalidRefundError, PaymentRefundFailedError
+    InvalidRefundError, PaymentRefundFailedError, SalesPausedError
 )
 from orders.tasks import process_purchase_task
 
@@ -36,6 +36,8 @@ class ReservationView(views.APIView):
             )
         except InsufficientCapacityError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except SalesPausedError as e:
+            return Response({'error': str(e)}, status=status.HTTP_409_CONFLICT)
 
 
 class ReservationDetailView(views.APIView):
@@ -110,6 +112,7 @@ class RefundView(views.APIView):
         try:
             refund = issue_refund(
                 order_id=serializer.validated_data['order_id'],
+                user=request.user,
                 ticket_ids=serializer.validated_data.get('ticket_ids'),
                 reason=serializer.validated_data.get('reason', ''),
                 actor_email=request.user.email
@@ -117,3 +120,5 @@ class RefundView(views.APIView):
             return Response(RefundSerializer(refund).data, status=status.HTTP_201_CREATED)
         except (InvalidRefundError, PaymentRefundFailedError) as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found.'}, status=status.HTTP_403_FORBIDDEN)

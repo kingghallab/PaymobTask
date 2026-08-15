@@ -11,10 +11,19 @@ class TicketTypeInline(admin.TabularInline):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ('title', 'organizer', 'venue', 'status', 'start_date', 'end_date')
-    list_filter = ('status', 'start_date')
+    list_display = ('title', 'organizer', 'venue', 'status', 'sales_paused', 'start_date', 'end_date')
+    list_filter = ('status', 'sales_paused', 'start_date')
     search_fields = ('title', 'venue', 'organizer__email')
     inlines = [TicketTypeInline]
+    actions = ['pause_sales', 'resume_sales']
+
+    @admin.action(description="Pause sales (block new reservations and pending purchases)")
+    def pause_sales(self, request, queryset):
+        queryset.update(sales_paused=True)
+
+    @admin.action(description="Resume sales")
+    def resume_sales(self, request, queryset):
+        queryset.update(sales_paused=False)
 
 
 @admin.register(TicketType)

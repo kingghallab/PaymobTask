@@ -3,9 +3,18 @@ from events.models import Event, TicketType
 from events.serializers import EventSerializer, TicketTypeSerializer
 
 
+class IsOrganizerOrReadOnly(permissions.BasePermission):
+    """Only the event's organizer (or staff) may edit/delete it."""
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return request.user.is_staff or obj.organizer_id == request.user.id
+
+
 class EventViewSet(viewsets.ModelViewSet):
     throttle_scope = 'events_list'
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOrganizerOrReadOnly]
     serializer_class = EventSerializer
     queryset = Event.objects.prefetch_related('ticket_types').all()
 

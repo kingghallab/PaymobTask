@@ -23,6 +23,11 @@ class PaymentFailedError(Exception):
     pass
 
 
+class SalesPausedError(Exception):
+    """Raised when sales are paused for the event (ops kill switch)."""
+    pass
+
+
 class InvalidRefundError(Exception):
     """Raised when refund request is invalid."""
     pass

@@ -2,7 +2,7 @@ import os
 import socket
 from datetime import timedelta
 from pathlib import Path
-from decouple import config
+from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -180,3 +180,10 @@ CELERY_BEAT_SCHEDULE = {
 
 # Payment Provider Setting
 PAYMENT_PROVIDER_CLASS = config('PAYMENT_PROVIDER_CLASS', default='payments.providers.FakePaymentProvider')
+
+# Alerting (brief §2: "any oversell incident triggers immediate alerting")
+# Uses Django's configured EMAIL_BACKEND (console in dev; point EMAIL_HOST/etc.
+# at a real SMTP relay via env vars for production - not built here, same
+# documented-not-built pattern as this project's other production-hardening notes).
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='alerts@paymobtask.local')
+ALERT_RECIPIENT_EMAILS = config('ALERT_RECIPIENT_EMAILS', default='ops@example.com', cast=Csv())

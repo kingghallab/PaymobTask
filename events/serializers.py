@@ -10,7 +10,8 @@ class TicketTypeSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'event', 'name', 'total_capacity',
             'sold', 'held', 'computed_available',
-            'price_cents', 'status', 'created_at', 'updated_at'
+            'price_cents', 'service_fee_cents', 'tax_cents',
+            'status', 'created_at', 'updated_at'
         )
         read_only_fields = ('id', 'sold', 'held', 'created_at', 'updated_at')
 
@@ -25,7 +26,7 @@ class EventSerializer(serializers.ModelSerializer):
             'venue', 'status', 'organizer', 'hold_duration_minutes',
             'ticket_types', 'created_at', 'updated_at'
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'organizer', 'created_at', 'updated_at')
 
     def validate(self, attrs):
         start_date = attrs.get('start_date')

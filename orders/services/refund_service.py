@@ -8,12 +8,15 @@ from orders.exceptions import InvalidRefundError, PaymentRefundFailedError
 from payments.providers import get_payment_provider
 
 
-def issue_refund(order_id, ticket_ids: list = None, reason: str = "", actor_email: str = "") -> Refund:
+def issue_refund(order_id, user, ticket_ids: list = None, reason: str = "", actor_email: str = "") -> Refund:
     """
     Issues a full or partial refund for an order:
-    1. Locks Order row via SELECT FOR UPDATE
+    1. Locks Order row via SELECT FOR UPDATE, scoped to the requesting user
+       unless they're staff (mirrors reservation_service.cancel_reservation's
+       ownership check)
     2. Validates active tickets available for refund
-    3. Calls PaymentProvider to refund captured funds
+    3. Calls PaymentProvider to refund captured funds - price plus a
+       proportional share of fees/tax for the refunded tickets
     4. Creates Refund audit record
     5. Marks target tickets as 'refunded'
     6. Restores inventory by decrementing TicketType.sold by ticket_count
@@ -21,7 +24,10 @@ def issue_refund(order_id, ticket_ids: list = None, reason: str = "", actor_emai
     8. Records AuditLog
     """
     with transaction.atomic():
-        order = Order.objects.select_for_update().get(id=order_id)
+        if user is not None and not user.is_staff:
+            order = Order.objects.select_for_update().get(id=order_id, user=user)
+        else:
+            order = Order.objects.select_for_update().get(id=order_id)
 
         if order.status in (OrderStatus.REFUNDED, OrderStatus.FAILED):
             raise InvalidRefundError(f"Cannot refund order {order_id} with status '{order.status}'.")
@@ -35,7 +41,14 @@ def issue_refund(order_id, ticket_ids: list = None, reason: str = "", actor_emai
             raise InvalidRefundError("No active tickets available for refund on this order.")
 
         ticket_count = tickets.count()
-        refund_amount_cents = order.unit_price_cents * ticket_count
+
+        # Fee/tax are flat-per-unit amounts multiplied by quantity to get the
+        # order total, so dividing back by quantity recovers the exact
+        # per-unit amount with no rounding - a partial refund gets a fair
+        # share of fees/tax, not just a share of the price.
+        unit_fee_cents = order.total_fees_cents // order.quantity
+        unit_tax_cents = order.total_tax_cents // order.quantity
+        refund_amount_cents = (order.unit_price_cents + unit_fee_cents + unit_tax_cents) * ticket_count
 
         # Call payment provider refund interface
         provider = get_payment_provider()
@@ -74,12 +87,12 @@ def issue_refund(order_id, ticket_ids: list = None, reason: str = "", actor_emai
         order.save(update_fields=['status'])
 
         AuditLog.record(
-            entity_type='order',
-            entity_id=order.id,
+            entity_type='refund',
+            entity_id=refund.id,
             action='refund_issued',
             actor=actor_email,
             changes={
-                'refund_id': str(refund.id),
+                'order_id': str(order.id),
                 'refund_amount_cents': refund_amount_cents,
                 'tickets_refunded': ticket_count,
                 'order_status_new': order.status

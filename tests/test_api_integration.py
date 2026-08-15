@@ -12,8 +12,6 @@ User = get_user_model()
 
 
 class APIIntegrationTest(TransactionTestCase):
-    serialized_rollback = True
-
     def setUp(self):
         super().setUp()
         self.client = APIClient()

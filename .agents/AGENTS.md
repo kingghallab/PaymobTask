@@ -7,7 +7,8 @@
 
 ## Design Constraints
 - 9 database entities only. Do not add new tables without explicit user approval.
-- No service fees or tax fields. Price is price_cents.
+- Service fees and tax fields exist (`TicketType.service_fee_cents`/`tax_cents`, `Order.total_fees_cents`/`total_tax_cents`) — reversed 2026-08-15 after reading the brief PDF directly (§2, §6 explicitly require them); the earlier "just price_cents" cut was based on a derived doc's simplification, not the brief.
+- `Ticket.checked_in_at` exists (nullable datetime) — same reversal, brief §6 requires check-in status in the attendee export.
 - No QR code DB fields. The ticket UUID is the QR content.
 - No IdempotencyKey table. Use Order.idempotency_key field.
 - No WaitlistEntry model. Use a code comment.

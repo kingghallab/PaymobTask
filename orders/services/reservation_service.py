@@ -5,7 +5,7 @@ from django.utils.timezone import now
 from events.models import TicketType
 from core.models import AuditLog
 from orders.models import Reservation, ReservationStatus
-from orders.exceptions import InsufficientCapacityError, ReservationAccessDeniedError
+from orders.exceptions import InsufficientCapacityError, ReservationAccessDeniedError, SalesPausedError
 
 
 def create_reservation(user, ticket_type_id, quantity: int) -> Reservation:
@@ -19,6 +19,9 @@ def create_reservation(user, ticket_type_id, quantity: int) -> Reservation:
             .select_related('event')
             .get(id=ticket_type_id, status='active')
         )
+
+        if ticket_type.event.sales_paused:
+            raise SalesPausedError(f"Sales are paused for event {ticket_type.event_id}.")
 
         available = ticket_type.total_capacity - ticket_type.sold - ticket_type.held
         if available < quantity:

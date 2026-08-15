@@ -5,8 +5,9 @@ from django.utils.timezone import now
 from django.contrib.auth import get_user_model
 from django.db import connection
 from events.models import Event, TicketType, EventStatus, TicketTypeStatus
-from orders.models import Reservation, ReservationStatus
+from orders.models import Reservation, ReservationStatus, Ticket, TicketStatus
 from orders.services.reservation_service import create_reservation
+from orders.services.purchase_service import process_purchase
 from orders.exceptions import InsufficientCapacityError
 
 User = get_user_model()
@@ -18,8 +19,6 @@ class ConcurrencyReservationTest(TransactionTestCase):
     against a TicketType with capacity = 50 results in EXACTLY 50 successes and 50 failures,
     with zero oversell.
     """
-    serialized_rollback = True
-
     def setUp(self):
         super().setUp()
         self.organizer = User.objects.create_user(
@@ -99,3 +98,92 @@ class ConcurrencyReservationTest(TransactionTestCase):
             status=ReservationStatus.ACTIVE
         ).count()
         self.assertEqual(active_reservations_count, 50)
+
+
+class ConcurrencyPurchaseTest(TransactionTestCase):
+    """
+    Regression test for finding #1: process_purchase() previously updated
+    TicketType.held/sold via a plain Python read-modify-write, with only the
+    Reservation row locked - concurrent purchases against DIFFERENT
+    reservations of the SAME ticket type could lose an update. Unlike the
+    reservation-side crown jewel test above (which only needs "no oversell"),
+    this asserts the final sold/held counters are EXACT, since a lost update
+    wouldn't necessarily cause oversell but would silently corrupt the
+    counters reconciliation depends on.
+    """
+    def setUp(self):
+        super().setUp()
+        self.organizer = User.objects.create_user(
+            email='organizer_purchase@example.com', username='organizer_purchase', password='Password123!'
+        )
+        self.event = Event.objects.create(
+            title='Purchase Concurrency Conference',
+            start_date=now() + timedelta(days=1),
+            end_date=now() + timedelta(days=1, hours=4),
+            venue='Hall',
+            status=EventStatus.PUBLISHED,
+            organizer=self.organizer,
+            hold_duration_minutes=10
+        )
+        self.ticket_type = TicketType.objects.create(
+            event=self.event,
+            name='General',
+            total_capacity=50,
+            sold=0,
+            held=0,
+            price_cents=1000,
+            status=TicketTypeStatus.ACTIVE
+        )
+
+        self.num_purchases = 30
+        self.reservations = []
+        for i in range(self.num_purchases):
+            buyer = User.objects.create_user(
+                email=f'purchaser{i}@example.com', username=f'purchaser{i}', password='Password123!'
+            )
+            reservation = create_reservation(user=buyer, ticket_type_id=self.ticket_type.id, quantity=1)
+            self.reservations.append(reservation)
+
+    def test_concurrent_purchases_no_lost_update(self):
+        results = []
+        exceptions = []
+
+        def attempt_purchase(reservation):
+            connection.close()
+            try:
+                return process_purchase(
+                    reservation_id=reservation.id,
+                    idempotency_key=f"key_{reservation.id}",
+                    actor_email=reservation.user.email
+                )
+            except Exception as e:
+                exceptions.append(e)
+                return None
+            finally:
+                connection.close()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_purchases) as executor:
+            futures = [executor.submit(attempt_purchase, r) for r in self.reservations]
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+
+        self.ticket_type.refresh_from_db()
+
+        self.assertEqual(len(exceptions), 0, f"Unexpected exceptions encountered: {exceptions}")
+        self.assertEqual(
+            len([r for r in results if r is not None]), self.num_purchases,
+            "Not all concurrent purchases succeeded"
+        )
+        self.assertLessEqual(
+            self.ticket_type.sold + self.ticket_type.held, self.ticket_type.total_capacity,
+            "Oversell detected"
+        )
+        self.assertEqual(self.ticket_type.held, 0, f"Expected held=0 after all purchases, got {self.ticket_type.held}")
+        self.assertEqual(
+            self.ticket_type.sold, self.num_purchases,
+            f"Lost update detected: expected sold={self.num_purchases}, got {self.ticket_type.sold}"
+        )
+        active_tickets = Ticket.objects.filter(
+            order__ticket_type=self.ticket_type, status=TicketStatus.ACTIVE
+        ).count()
+        self.assertEqual(active_tickets, self.num_purchases)

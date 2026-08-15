@@ -34,6 +34,7 @@ class Event(models.Model):
         related_name='organized_events'
     )
     hold_duration_minutes = models.PositiveIntegerField(default=10)
+    sales_paused = models.BooleanField(default=False, help_text="Ops kill switch: blocks new reservations and pending purchase confirmations for this event.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -57,6 +58,8 @@ class TicketType(models.Model):
     sold = models.PositiveIntegerField(default=0)
     held = models.PositiveIntegerField(default=0)
     price_cents = models.PositiveIntegerField(help_text="Price in integer cents (e.g., 1000 = $10.00)")
+    service_fee_cents = models.PositiveIntegerField(default=0, help_text="Flat per-ticket service fee, in integer cents")
+    tax_cents = models.PositiveIntegerField(default=0, help_text="Flat per-ticket tax, in integer cents")
     status = models.CharField(
         max_length=20,
         choices=TicketTypeStatus.choices,
