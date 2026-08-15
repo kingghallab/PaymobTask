@@ -100,3 +100,33 @@ class APIIntegrationTest(TransactionTestCase):
         self.ticket_type.refresh_from_db()
         self.assertEqual(self.ticket_type.sold, 0)
         self.assertEqual(self.ticket_type.held, 0)
+
+    def test_cancel_reservation_endpoint_releases_hold_and_serializes(self):
+        login_data = {'email': 'alice@example.com', 'password': 'StrongPassword123!'}
+        reg_data = {
+            'email': 'alice2@example.com',
+            'username': 'alice2',
+            'first_name': 'Alice',
+            'last_name': 'Smith',
+            'password': 'StrongPassword123!',
+            'confirm_password': 'StrongPassword123!'
+        }
+        self.client.post('/api/users/register/', reg_data, format='json')
+        login_response = self.client.post('/api/users/login/', {'email': 'alice2@example.com', 'password': 'StrongPassword123!'}, format='json')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {login_response.data["access"]}')
+
+        res_response = self.client.post('/api/reservations/', {'ticket_type_id': str(self.ticket_type.id), 'quantity': 3}, format='json')
+        self.assertEqual(res_response.status_code, status.HTTP_201_CREATED)
+        reservation_id = res_response.data['id']
+
+        self.ticket_type.refresh_from_db()
+        self.assertEqual(self.ticket_type.held, 3)
+
+        del_response = self.client.delete(f'/api/reservations/{reservation_id}/')
+        self.assertEqual(del_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(del_response.data['status'], 'cancelled')
+        self.assertEqual(del_response.data['ticket_type_detail']['held'], 0)
+        self.assertEqual(del_response.data['ticket_type_detail']['computed_available'], 20)
+
+        self.ticket_type.refresh_from_db()
+        self.assertEqual(self.ticket_type.held, 0)

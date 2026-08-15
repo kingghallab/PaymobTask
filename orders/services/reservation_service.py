@@ -76,6 +76,7 @@ def cancel_reservation(reservation_id, user) -> Reservation:
             ticket_type = reservation.ticket_type
             ticket_type.held = F('held') - reservation.quantity
             ticket_type.save(update_fields=['held', 'updated_at'])
+            ticket_type.refresh_from_db(fields=['held', 'updated_at'])
 
             reservation.status = ReservationStatus.CANCELLED
             reservation.save(update_fields=['status'])
